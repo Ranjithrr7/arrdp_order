@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ARR Dairy Order Portal</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body { font-family: Arial; padding: 20px; background: #f4f4f4; }
+    .login, .form-section { background: #fff; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+    table, th, td { border: 1px solid #000; border-collapse: collapse; padding: 8px; }
+    th { background-color: #eee; }
+    input, select { padding: 6px; margin: 5px; }
+  </style>
+</head>
+<body>
+
+<div class="login" id="loginForm">
+  <h2>Login</h2>
+  <label>Username: <input type="text" id="username"></label><br>
+  <label>Password: <input type="password" id="password"></label><br>
+  <button onclick="login()">Login</button>
+</div>
+
+<div class="form-section" id="orderForm" style="display:none;">
+  <h2>Order Entry Form</h2>
+  <label>Dealer Code: <input type="text" id="dealerCode" oninput="fetchDealerDetails()"></label>
+  <label>Dealer Name: <input type="text" id="dealerName" list="dealerList" oninput="fetchDealerFromName()"></label>
+  <datalist id="dealerList"></datalist><br>
+  <label>Phone: <input type="text" id="dealerPhone" readonly></label><br>
+  
+  <h3>Product Entry</h3>
+  <label>Product Code: <input type="text" id="productCode" oninput="fillProductByCode()"></label>
+  <label>Product Name: <input type="text" id="productName" list="productList" oninput="fillProductByName()"></label>
+  <datalist id="productList"></datalist>
+  <label>Crates: <input type="number" id="crates" value="0"></label>
+  <label>Packets: <input type="number" id="packets" value="0"></label>
+  <button onclick="addProduct()">Add</button>
+
+  <h3>Order Table</h3>
+  <table id="orderTable">
+    <thead>
+      <tr>
+        <th>Product</th>
+        <th>Code</th>
+        <th>Packets</th>
+        <th>Crates</th>
+        <th>Litres</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <button onclick="generatePDF()">Download PDF Report</button>
+</div>
+
+<script>
+  const users = { 'admin': '1234' };
+  const dealerDB = {
+    'D001': { name: 'Vasantham Catering', phone: '9443725704' },
+    'D002': { name: 'Samy Agency', phone: '7010032409' },
+  };
+  const productDB = {
+    '101': 'FCM 1000', '102': 'FCM 500', '103': 'FCM 125',
+    '601': 'GOLD 1000', '201': 'SM 1000', '202': 'SM 500', '203': 'SM 130',
+    '301': 'TM 1000', '302': 'TM 500', '303': 'TM 220', '304': 'TM 150',
+    '901': 'DT MILK 1000', '401': 'TM CURD 1000', '402': 'TM CURD 500', '403': 'TM CURD 140',
+    '501': 'DT CURD 1000', '502': 'DT CURD 500', '503': 'DT CURD 140',
+    '1002': 'CAN CURD', '801': 'GHEE 1000', '802': 'GHEE 500', '803': 'GHEE 200',
+    '804': 'GHEE 100', '711': 'PANEER 1 KG'
+  };
+
+  for (let code in productDB) {
+    const name = productDB[code];
+    $("#productList").append(`<option value="${name}">`);
+  }
+  for (let code in dealerDB) {
+    const dealer = dealerDB[code];
+    $("#dealerList").append(`<option value="${dealer.name}">`);
+  }
+
+  function login() {
+    const uname = $('#username').val();
+    const pass = $('#password').val();
+    if (users[uname] === pass) {
+      $('#loginForm').hide();
+      $('#orderForm').show();
+    } else {
+      alert('Invalid login');
+    }
+  }
+
+  function fetchDealerDetails() {
+    const code = $('#dealerCode').val();
+    if (dealerDB[code]) {
+      $('#dealerName').val(dealerDB[code].name);
+      $('#dealerPhone').val(dealerDB[code].phone);
+    }
+  }
+
+  function fetchDealerFromName() {
+    const name = $('#dealerName').val();
+    for (let code in dealerDB) {
+      if (dealerDB[code].name === name) {
+        $('#dealerCode').val(code);
+        $('#dealerPhone').val(dealerDB[code].phone);
+      }
+    }
+  }
+
+  function fillProductByCode() {
+    const code = $('#productCode').val();
+    $('#productName').val(productDB[code] || '');
+  }
+
+  function fillProductByName() {
+    const name = $('#productName').val();
+    for (let code in productDB) {
+      if (productDB[code] === name) {
+        $('#productCode').val(code);
+      }
+    }
+  }
+
+  function addProduct() {
+    const pname = $('#productName').val();
+    const pcode = $('#productCode').val();
+    let crates = parseFloat($('#crates').val()) || 0;
+    let packets = parseFloat($('#packets').val()) || 0;
+    let litres = 0;
+
+    if (pname.includes('1000')) litres = (crates * 12 + packets) * 1;
+    else if (pname.includes('500')) litres = (crates * 24 + packets) * 0.5;
+    else if (/(220|140|130|120)/.test(pname)) litres = (crates * 60 + packets) * parseFloat(pname.match(/\d+/)[0]) / 1000;
+    else if (pname.includes('CAN CURD')) litres = packets * parseFloat(pname.match(/\d+/)[0]);
+    else if (pname.includes('GHEE') || pname.includes('PANEER')) litres = packets * parseFloat(pname.match(/\d+/)[0]) / 1000;
+
+    $('#orderTable tbody').append(`
+      <tr>
+        <td>${pname}</td>
+        <td>${pcode}</td>
+        <td>${packets}</td>
+        <td>${crates}</td>
+        <td>${litres.toFixed(2)}</td>
+      </tr>`);
+  }
+
+  function generatePDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.text("ARR Dairy Order Report", 20, 10);
+    let y = 20;
+    $('#orderTable tbody tr').each(function () {
+      const row = $(this).find('td').map(function () { return $(this).text(); }).get();
+      doc.text(row.join("  |  "), 10, y);
+      y += 10;
+    });
+    doc.save("Order_Report.pdf");
+  }
+</script>
+
+</body>
+</html>
